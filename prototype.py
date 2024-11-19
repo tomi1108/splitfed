@@ -3,6 +3,27 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 
+
+def get_intermediate_info(args):
+
+    intermediate_info_dict = {
+        'mobilenet_v2': 
+            {
+                'cifar10': (32, 8, 8),
+                'cifar100': (32, 8, 8),
+                'tinyimagenet': (32, 8, 8)
+            },
+        'resnet18':
+            {
+                'cifar10': (64, 8, 8),
+                'cifar100': (64, 8, 8),
+                'tinyimagenet': (64, 8, 8)                
+            }
+    }
+
+    return intermediate_info_dict[args.model_type][args.dataset_type]
+
+
 class Prototypes:
 
     def __init__(
@@ -16,7 +37,7 @@ class Prototypes:
         self.num_classes = num_classes
         self.device = device
 
-        self.threshold = args.threshold
+        self.threshold = 1 / num_classes # 期待値として定義
         self.batch_size = args.batch_size
         self.dataset_type = args.dataset_type
 
@@ -36,24 +57,8 @@ class Prototypes:
         self.pos_start = False
         self.neg_start = False
 
-        projected_size_dict = {
-            'cifar10': 128,
-            'cifar100': 256,
-            'tinyimagenet': 512
-        }
-
-        intermediate_channel_dict = {
-            'mobilenet_v2': {
-                'cifar10': 32 * 4 * 4,
-                'tinyimagenet': 32 * 8 * 8
-            },
-            'resnet18': {
-                'tinyimagenet': 64 * 8 * 8
-            }
-        }
-
-        self.projected_size = projected_size_dict[self.dataset_type]
-        self.intermediate_channel = intermediate_channel_dict[args.model_type][args.dataset_type]
+        self.projected_size = args.projected_size
+        self.intermediate_info = get_intermediate_info(args)
         self.positive_prototypes = torch.zeros(self.num_classes, self.projected_size).to(self.device)
         self.negative_prototypes = torch.zeros(self.num_classes, self.projected_size).to(self.device)
     
@@ -62,40 +67,36 @@ class Prototypes:
         self.temperature = 0.5
 
         # P_SFLなら実行する
-        self.sub_projection_heads = {}
-        self.sub_optimizers = {}
-        self.build_sub_projection_head()
+        self.sub_projection_heads, self.sub_optimizers = self.build_sub_projection_head()
+
     
     def build_sub_projection_head(self):
 
+        c, h, w = self.intermediate_info
+        sub_projection_heads, sub_optimizers = {}, {}
+
         for client_id in range(self.args.num_clients):
 
-            # self.sub_projection_heads[client_id] = nn.Sequential(
-            #     nn.Conv2d(64, 64, kernel_size=3, stride=1, padding=1),
-            #     nn.BatchNorm2d(64),
-            #     nn.ReLU(),
-            #     nn.MaxPool2d(2),
-            #     nn.Flatten(),
-            #     nn.Linear(self.intermediate_channel, self.projected_size)
-            # )
-
-            self.sub_projection_heads[client_id] = nn.Sequential(
-                nn.Conv2d(32, 32, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(32),
-                nn.ReLU6(),
+            sub_projection_heads[client_id] = nn.Sequential(
+                nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1),
+                nn.BatchNorm2d(c),
+                nn.ReLU(),
                 nn.MaxPool2d(2),
                 nn.Flatten(),
-                nn.Linear(int(self.intermediate_channel / 4), self.projected_size)
+                nn.Linear(int(c * h * w / 2**2), self.projected_size)
             )
 
-            self.sub_projection_heads[client_id].to(self.device)
+            sub_projection_heads[client_id].to(self.device)
         
-            self.sub_optimizers[client_id] = torch.optim.SGD(
-                params=self.sub_projection_heads[client_id].parameters(),
+            sub_optimizers[client_id] = torch.optim.SGD(
+                params=sub_projection_heads[client_id].parameters(),
                 lr=self.args.lr,
                 momentum=self.args.momentum,
                 weight_decay=self.args.weight_decay,
             )
+        
+        return sub_projection_heads, sub_optimizers
+    
         
     def reset(self):
 
@@ -125,7 +126,6 @@ class Prototypes:
 
             for idx, label in enumerate(labels):
 
-                # if smax_outs[idx, label] > self.threshold:
                 # 正解クラスの確率がそのクラスの閾値よりも高い場合
                 if smax_outs[idx, label] > self.class_threshold[label]:
 
@@ -133,12 +133,12 @@ class Prototypes:
                     self.positive_labels.append(labels[idx].unsqueeze(0))
                     self.positive_counts += 1
 
-                # else:
                 # 正解クラスの確率が期待値よりも低い場合
                 elif smax_outs[idx, label] < self.threshold:
                     self.negative_features.append(f_proj[idx].unsqueeze(0))
                     self.negative_labels.append(labels[idx].unsqueeze(0))
                     self.negative_counts += 1
+
                     
     def calculate_prototypes(self):
 
@@ -169,19 +169,17 @@ class Prototypes:
                 # データ数の1%以上あれば平均値で更新し、閾値も更新
                 if len(positive_features_of_cls) > data_size_per_class * 0.01: # ここの0.01はハイパーパラメータになり得る
                     self.positive_prototypes[cls] = positive_features_of_cls.mean(0)
-                    self.class_threshold[cls] += self.args.threshold
-                    self.class_threshold[cls] = min(self.class_threshold[cls], 1-self.args.threshold)
+                    self.class_threshold[cls] = min(self.class_threshold[cls]+self.threshold, 1-self.threshold)
                 else:
                     self.positive_prototypes[cls] = previous_positive_prototypes[cls]
                     # 1つでもポジティブプロトタイプを計算できないクラスがあったらFalse
                     self.pos_start = False
-                    self.class_threshold[cls] -= self.args.threshold
-                    self.class_threshold[cls] = max(self.class_threshold[cls], self.args.threshold)
+                    self.class_threshold[cls] = max(self.class_threshold[cls]-self.threshold, self.threshold)
                     print(f'few positive sample in class {cls}!!')
 
                 if len(negative_features_of_cls) > 0:
                     # 既に対照学習が始まっているなら重み付け
-                    if self.start:
+                    if self.flag:
                         self.negative_prototypes[cls] = (1 - 0.1) * previous_negative_prototypes[cls] + 0.1 * negative_features_of_cls.mean(0)
                     # 今回が初めての場合は、単純に平均値
                     else:
@@ -220,29 +218,6 @@ class Prototypes:
 
         pos = self.cosine(projected_smashed_data, positive_sample)
         neg = self.cosine(projected_smashed_data, negative_sample)
-
-        logits = torch.cat((pos.reshape(-1, 1), neg.reshape(-1, 1)), dim=1)
-        logits /= 0.5
-        logits_labels = torch.zeros(self.batch_size).to(self.device).long()
-
-        loss = self.criterion(logits, logits_labels)
-
-        return loss
-
-
-    def calculate_loss_pm(
-        self,
-        client_id: int,
-        projected_features: torch.Tensor,
-        labels: torch.Tensor
-    ):
-                
-        projected_features = F.normalize(projected_features, dim=1)
-        positive_sample = self.positive_prototypes[labels]
-        negative_sample = self.negative_prototypes[labels]
-
-        pos = self.cosine(projected_features, positive_sample)
-        neg = self.cosine(projected_features, negative_sample)
 
         logits = torch.cat((pos.reshape(-1, 1), neg.reshape(-1, 1)), dim=1)
         logits /= 0.5

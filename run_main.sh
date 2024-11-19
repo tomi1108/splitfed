@@ -2,7 +2,7 @@
 
 anaconda_env=SL
 # app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-app_name='P_SFL'
+app_name='SFL'
 model_type='mobilenet_v2' # ['mobilenet_v2, 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152']
 dataset_type='cifar10' # ['cifar10', 'cifar100', 'tinyimagenet']
 datasets_dir='~/datasets/'
@@ -14,16 +14,16 @@ num_clients=5
 num_rounds=100
 num_epochs=5
 batch_size=128
-alpha_list=(0.2 1.0 0.6)
+alpha_list=(1.0)
 # alpha=0.2
-threshold=0.1
+projected_size=256
 # u=0.0
-u_list=(10.0 5.0)
+u_list=(0.0)
 lr=0.01
 momentum=0.9
 weight_decay=0.0001
 
-save_flag=True # [True, False]
+save_flag=False # [True, False]
 
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate ${anaconda_env}
@@ -47,9 +47,9 @@ for alpha in "${alpha_list[@]}"; do
             --num_clients ${num_clients}
             --num_rounds ${num_rounds}
             --num_epochs ${num_epochs}
+            --projected_size ${projected_size}
             --batch_size ${batch_size}
             --alpha ${alpha}
-            --threshold ${threshold}
             --u ${u}
             --lr ${lr}
             --momentum ${momentum}
