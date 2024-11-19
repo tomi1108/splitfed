@@ -47,6 +47,7 @@ parser.add_argument('--seed', type=int, default=42, help='seed of numpy, random 
 parser.add_argument('--num_clients', type=int, default=2, help='the number of clients')
 parser.add_argument('--num_rounds', type=int, default=50, help='the number of global rounds')
 parser.add_argument('--num_epochs', type=int, default=5, help='the number of global epochs')
+parser.add_argument('--projected_size', type=int, default=256, help='output size of projection head')
 parser.add_argument('--batch_size', type=int , default=128, help='the batch_size of train dataloader')
 parser.add_argument('--model_type', type=str, choices=['mobilenet_v2', 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152'], default='mobilenet_v2', help='the type of model using training')
 parser.add_argument('--dataset_type', type=str, choices=['cifar10', 'cifar100', 'tinyimagenet'], default='cifar10', help='the type of dataset using training')
@@ -54,7 +55,6 @@ parser.add_argument('--datasets_dir', type=str, default='~/datasets/', help='pat
 parser.add_argument('--results_dir', type=str, default='./results/', help='path to results directory')
 parser.add_argument('--data_dist_type', type=str, choices=['iid', 'non-iid'], default='iid', help='select the type of data distribution')
 parser.add_argument('--alpha', type=float, default=1.0, help='parameter of dirichlet distribution')
-parser.add_argument('--threshold', type=float, default=0.1, help='threshold of positive or negative in P_SFL')
 parser.add_argument('--u', type=float, default=0.5, help='hyperparameter about prototype effective')
 parser.add_argument('--lr', type=float, default=0.01, help='the leraning rate of training')
 parser.add_argument('--momentum', type=float, default=0.9, help='the momentum of training')
@@ -99,7 +99,7 @@ class Server:
         smashed_data.retain_grad()
 
         self.optimizer.zero_grad()
-        f_conv, f_proj, outs = self.model(smashed_data)
+        _, _, outs = self.model(smashed_data)
         loss = self.criterion(outs, labels)
         self.running_loss += loss.item()
 
@@ -107,10 +107,6 @@ class Server:
             if prototypes.flag:
                 p_loss = prototypes.calculate_loss(client_id, smashed_data, labels)
                 loss = loss + args.u * p_loss
-        # if self.args.app_name == 'PM_SFL':
-        #     if prototypes.flag:
-        #         p_loss = prototypes.calculate_loss_pm(client_id, f_proj, labels)
-        #         loss = loss + args.u * p_loss
 
         loss.backward()
         self.optimizer.step()
@@ -212,7 +208,7 @@ class Client:
                 images = images.to(self.device)
                 labels = labels.to(self.device)
 
-                f_conv, f_proj, outs = server_model(self.model(images))
+                _, f_proj, outs = server_model(self.model(images))
                 loss = self.criterion(outs, labels)
                 train_loss += loss.item()
 
@@ -222,8 +218,6 @@ class Client:
 
                 if args.app_name == 'P_SFL':
                     prototypes.save_projected(f_proj, outs, labels)
-                # if args.app_name == 'PM_SFL':
-                #     prototypes.save_projected(f_proj, outs, labels)
                     
             train_loss /= len(self.train_loader)
         
@@ -240,15 +234,11 @@ def fedavg(
         global_weights[k] = global_weights[k] * fedavg_ratios[0]
         for client_id in range(1, len(client_weights)):
             global_weights[k] += client_weights[client_id][k] * fedavg_ratios[client_id]
-        # global_weights[k] = torch.div(global_weights[k], len(client_weights))
     
     return global_weights
 
 
 def main(args: argparse.ArgumentParser, device: torch.device):
-
-    # seed
-    # set_seed(args.seed, device)
 
     # save or not
     if args.save_flag:
@@ -269,7 +259,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     print(f'The number of iterations per global epoch: {num_iter}')
 
     # create dataloader
-    train_loaders, test_loader = create_data_loader(args, data_indices_per_client, num_classes)
+    train_loaders, test_loader = create_cached_data_loaders(args, data_indices_per_client, num_classes)
     client_models, server_model, client_optimizers, server_optimizer = create_model(args, num_clients, num_classes, device)        
 
     # server and client
@@ -282,8 +272,8 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     # prototype
     if args.app_name == 'P_SFL':
         prototypes = Prototypes(args, num_classes, device)
-    # if args.app_name == 'PM_SFL':
-    #     prototypes = Prototypes(args, num_classes, device)
+    else:
+        prototypes = None
 
     # training    
     for round in range(args.num_rounds):
@@ -296,16 +286,12 @@ def main(args: argparse.ArgumentParser, device: torch.device):
 
         for epoch in range(args.num_epochs):
 
-            # print(f'=== Epoch[{epoch+1}/{args.num_epochs}] ===')
             server.running_loss = 0.0
-
             for iter in tqdm(range(num_iter)):
 
                 for client_id, client in clients.items():
                     intermediates = clients[client_id].forward()
-                    if args.app_name == 'SFL': gradients = server.train(intermediates)
-                    elif args.app_name == 'P_SFL': gradients = server.train(intermediates, prototypes)
-                    # elif args.app_name == 'PM_SFL': gradients = server.train(intermediates, prototypes)
+                    gradients = server.train(intermediates, prototypes)
                     client.backward(gradients)
             
             server.running_loss = server.running_loss / (num_iter * num_clients)
@@ -331,10 +317,8 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         corrects = 0
         totals = 0
         train_loss = 0.0
-        for client_id, client in clients.items():
-            if args.app_name == 'SFL': correct, total, loss = client.evaluate(server.model)
-            elif args.app_name == 'P_SFL': correct, total, loss = client.evaluate(server.model, prototypes)
-            # elif args.app_name == 'PM_SFL': correct, total, loss = client.evaluate(server.model, prototypes)
+        for client_id, client in tqdm(clients.items()):
+            correct, total, loss = client.evaluate(server.model, prototypes)
             corrects += correct
             totals += total
             train_loss += loss
@@ -359,10 +343,6 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             global_sub_projection_head = fedavg(trained_sub_projection_heads, sub_fedavg_ratios)
             for client_id in range(num_clients):
                 prototypes.sub_projection_heads[client_id].load_state_dict(global_sub_projection_head)
-
-        # if args.app_name == 'PM_SFL':
-        #     prototypes.calculate_prototypes()
-        #     prototypes.reset()
 
 
 if __name__ == '__main__':

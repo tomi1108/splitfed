@@ -7,6 +7,19 @@ from torchvision.models import (
 )
 from copy import deepcopy
 
+def get_model_constructor(model_type: str):
+
+    model_mapping = {
+        'mobilenet_v2': (mobilenet_v2, client_mobilenet_v2, server_mobilenet_v2),
+        'resnet18': (resnet18, client_resnet18, server_resnet18),
+        'resnet34': (resnet34, client_resnet34, server_resnet34),
+        'resnet50': (resnet50, client_resnet50, server_resnet50),
+        'resnet101': (resnet101, client_resnet101, server_resnet101),
+        'resnet152': (resnet152, client_resnet152, server_resnet152)
+    }
+
+    return model_mapping.get(model_type)
+
 def create_model(
     args: argparse.ArgumentParser,
     num_clients: int,
@@ -19,49 +32,23 @@ def create_model(
     momentum = args.momentum
     weight_decay = args.weight_decay
     
-    if model_type == 'mobilenet_v2':
-
-        base_mobilenet_v2 = mobilenet_v2(weights=None).to(device)
-        client_models = {client_id: client_mobilenet_v2(deepcopy(base_mobilenet_v2)) for client_id in range(num_clients)}
-        server_model = server_mobilenet_v2(args, num_classes, deepcopy(base_mobilenet_v2))
-
-    elif model_type == 'resnet18':
-
-        base_resnet18 = resnet18(weights=None).to(device)
-        client_models = {client_id: client_resnet18(deepcopy(base_resnet18)) for client_id in range(num_clients)}
-        server_model = server_resnet18(args, num_classes, deepcopy(base_resnet18))
-
-    elif model_type == 'resnet34':
-
-        base_resnet34 = resnet34(weights=None).to(device)
-        client_models = {client_id: client_resnet34(deepcopy(base_resnet34)) for client_id in range(num_clients)}
-        server_model = server_resnet34(args, num_classes, deepcopy(base_resnet34))
-
-    elif model_type == 'resnet50':
-
-        base_resnet50 = resnet50(weights=None).to(device)
-        client_models = {client_id: client_resnet50(deepcopy(base_resnet50)) for client_id in range(num_clients)}
-        server_model = server_resnet50(args, num_classes, deepcopy(base_resnet50))
-
-    elif model_type == 'resnet101':
-
-        base_resnet101 = resnet101(weights=None).to(device)
-        client_models = {client_id: client_resnet101(deepcopy(base_resnet101)) for client_id in range(num_clients)}
-        server_model = server_resnet101(args, num_classes, deepcopy(base_resnet101))
-
-    elif model_type == 'resnet152':
-
-        base_resnet152 = resnet152(weights=None).to(device)
-        client_models = {client_id: client_resnet152(deepcopy(base_resnet152)) for client_id in range(num_clients)}
-        server_model = server_resnet152(args, num_classes, deepcopy(base_resnet152))
-
+    model_constructor = get_model_constructor(model_type)
+    if model_constructor is None:
+        raise ValueError(f'unsupported model type: {model_type}')
     
-    client_optimizers = {
-        client_id: optim.SGD(params=client_models[client_id].parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
-        for client_id in range(num_clients)
+    base_mc, client_mc, server_mc = model_constructor
+    base_model = base_mc(weights=None).to(device)
+    
+    client_models = {
+        client_id: client_mc(deepcopy(base_model)) for client_id in range(num_clients)
     }
-    server_optimizer = optim.SGD(params=server_model.parameters(), lr=lr, momentum=momentum, weight_decay=weight_decay)
+    server_model = server_mc(args, num_classes, deepcopy(base_model))
 
+    client_optimizers = {
+        client_id: optim.SGD(client_models[client_id].parameters(), lr, momentum, weight_decay) for client_id in range(num_clients)
+    }
+    server_optimizer = optim.SGD(server_model.parameters(), lr, momentum, weight_decay)
+    
     return client_models, server_model, client_optimizers, server_optimizer
 
 
@@ -82,12 +69,7 @@ class server_mobilenet_v2(nn.Module):
         super(server_mobilenet_v2, self).__init__()
 
         input_size = model.features[-1][0].out_channels
-        projected_size_dict = {
-            'cifar10': 128,
-            'cifar100': 256,
-            'tinyimagenet': 512
-        }
-        projected_size = projected_size_dict[args.dataset_type]
+        projected_size = args.projected_size
 
         self.base_encoder = model.features[6:]
         self.projection_head = nn.Sequential(
@@ -97,7 +79,6 @@ class server_mobilenet_v2(nn.Module):
         )
         self.output_layer = nn.Sequential(
             nn.ReLU6(inplace=False),
-            nn.Dropout(p=0.2, inplace=False),
             nn.Linear(projected_size, num_classes, bias=True)
         )
     
