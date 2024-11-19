@@ -223,13 +223,13 @@ def create_data_loader(
                 data_indices=data_indices_per_client[clt],
                 train=True,
                 transform=transform,
-                download=False
+                download=True
             )
         test_dataset = cifar10(
             datasets_dir=args.datasets_dir,
             train=False,
             transform=transform,
-            download=False
+            download=True
         )
     
     elif dataset_type == 'cifar100':
@@ -240,13 +240,13 @@ def create_data_loader(
                 data_indices=data_indices_per_client[clt],
                 train=True,
                 transform=transform,
-                download=False
+                download=True
             )
         test_dataset = cifar100(
             datasets_dir=args.datasets_dir,
             train=False,
             transform=transform,
-            download=False
+            download=True
         )
     
     elif dataset_type == 'tinyimagenet':
