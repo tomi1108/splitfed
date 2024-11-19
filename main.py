@@ -107,6 +107,10 @@ class Server:
             if prototypes.flag:
                 p_loss = prototypes.calculate_loss(client_id, smashed_data, labels)
                 loss = loss + args.u * p_loss
+        # if self.args.app_name == 'PM_SFL':
+        #     if prototypes.flag:
+        #         p_loss = prototypes.calculate_loss_pm(client_id, f_proj, labels)
+        #         loss = loss + args.u * p_loss
 
         loss.backward()
         self.optimizer.step()
@@ -218,6 +222,8 @@ class Client:
 
                 if args.app_name == 'P_SFL':
                     prototypes.save_projected(f_proj, outs, labels)
+                # if args.app_name == 'PM_SFL':
+                #     prototypes.save_projected(f_proj, outs, labels)
                     
             train_loss /= len(self.train_loader)
         
@@ -276,6 +282,8 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     # prototype
     if args.app_name == 'P_SFL':
         prototypes = Prototypes(args, num_classes, device)
+    # if args.app_name == 'PM_SFL':
+    #     prototypes = Prototypes(args, num_classes, device)
 
     # training    
     for round in range(args.num_rounds):
@@ -297,6 +305,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
                     intermediates = clients[client_id].forward()
                     if args.app_name == 'SFL': gradients = server.train(intermediates)
                     elif args.app_name == 'P_SFL': gradients = server.train(intermediates, prototypes)
+                    # elif args.app_name == 'PM_SFL': gradients = server.train(intermediates, prototypes)
                     client.backward(gradients)
             
             server.running_loss = server.running_loss / (num_iter * num_clients)
@@ -325,6 +334,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         for client_id, client in clients.items():
             if args.app_name == 'SFL': correct, total, loss = client.evaluate(server.model)
             elif args.app_name == 'P_SFL': correct, total, loss = client.evaluate(server.model, prototypes)
+            # elif args.app_name == 'PM_SFL': correct, total, loss = client.evaluate(server.model, prototypes)
             corrects += correct
             totals += total
             train_loss += loss
@@ -349,6 +359,10 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             global_sub_projection_head = fedavg(trained_sub_projection_heads, sub_fedavg_ratios)
             for client_id in range(num_clients):
                 prototypes.sub_projection_heads[client_id].load_state_dict(global_sub_projection_head)
+
+        # if args.app_name == 'PM_SFL':
+        #     prototypes.calculate_prototypes()
+        #     prototypes.reset()
 
 
 if __name__ == '__main__':

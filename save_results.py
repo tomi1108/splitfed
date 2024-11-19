@@ -31,6 +31,8 @@ def results_setting(
 
     if approach_name == 'P_SFL':
         dist_type += '_U' + str(args.u)
+    if approach_name == 'PM_SFL':
+        dist_type += '_U' + str(args.u)
 
     filename = '_'.join([rounds, epochs, batch, dist_type]) + '.csv'
     results_dir = os.path.join(results_dir, filename)
