@@ -1,9 +1,10 @@
 #!/bin/bash
 
 anaconda_env=SL
-app_names=('SFL') # ['SFL', 'P_SFL']
-model_type='resnet34' # ['mobilenet_v2, 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152']
-dataset_type='tinyimagenet' # ['cifar10', 'cifar100', 'tinyimagenet']
+# app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+app_name='P_SFL'
+model_type='mobilenet_v2' # ['mobilenet_v2, 'resnet18', 'resnet34', 'resnet50', 'resnet101', 'resnet152']
+dataset_type='cifar10' # ['cifar10', 'cifar100', 'tinyimagenet']
 datasets_dir='~/datasets/'
 results_dir='./results/'
 data_dist_type='non-iid' # ['iid', 'non-iid']
@@ -13,11 +14,11 @@ num_clients=5
 num_rounds=100
 num_epochs=5
 batch_size=128
-alpha_list=(0.2)
+alpha_list=(0.2 1.0 0.6)
 # alpha=0.2
-threshold=0.005
-u=0.0
-# u_list=(5.0)
+threshold=0.1
+# u=0.0
+u_list=(10.0 5.0)
 lr=0.01
 momentum=0.9
 weight_decay=0.0001
@@ -27,11 +28,17 @@ save_flag=True # [True, False]
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate ${anaconda_env}
 
-for app_name in "${app_names[@]}"; do
+for alpha in "${alpha_list[@]}"; do
 
-    for alpha in "${alpha_list[@]}"; do
+    for u in "${u_list[@]}"; do
 
-        echo "u parameter: ${u}"
+        if [[ "${alpha}" == "0.2" && "${u}" == "5.0" ]]; then
+            echo "Skipping alpha=0.2 and u=5.0"
+            continue
+        fi
+
+        echo "alpha: ${alpha}, u: ${u}"
+
         params="
             --app_name ${app_name}
             --model_type ${model_type}

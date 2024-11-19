@@ -61,6 +61,7 @@ class Prototypes:
         self.cosine = torch.nn.CosineSimilarity(dim=1)
         self.temperature = 0.5
 
+        # P_SFLなら実行する
         self.sub_projection_heads = {}
         self.sub_optimizers = {}
         self.build_sub_projection_head()
@@ -219,6 +220,29 @@ class Prototypes:
 
         pos = self.cosine(projected_smashed_data, positive_sample)
         neg = self.cosine(projected_smashed_data, negative_sample)
+
+        logits = torch.cat((pos.reshape(-1, 1), neg.reshape(-1, 1)), dim=1)
+        logits /= 0.5
+        logits_labels = torch.zeros(self.batch_size).to(self.device).long()
+
+        loss = self.criterion(logits, logits_labels)
+
+        return loss
+
+
+    def calculate_loss_pm(
+        self,
+        client_id: int,
+        projected_features: torch.Tensor,
+        labels: torch.Tensor
+    ):
+                
+        projected_features = F.normalize(projected_features, dim=1)
+        positive_sample = self.positive_prototypes[labels]
+        negative_sample = self.negative_prototypes[labels]
+
+        pos = self.cosine(projected_features, positive_sample)
+        neg = self.cosine(projected_features, negative_sample)
 
         logits = torch.cat((pos.reshape(-1, 1), neg.reshape(-1, 1)), dim=1)
         logits /= 0.5
