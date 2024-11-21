@@ -18,10 +18,20 @@ def get_intermediate_info(args):
                 'cifar10': (64, 8, 8),
                 'cifar100': (64, 8, 8),
                 'tinyimagenet': (64, 8, 8)                
+            },
+        'resnet50':
+            {
+                'cifar10': (256, 16, 16),
+                'cifar100': (256, 16, 16),
+                'tinyimagenet': (256, 16, 16),
             }
     }
 
     return intermediate_info_dict[args.model_type][args.dataset_type]
+
+
+def prGreen(skk):
+    print("\033[92m {}\033[00m" .format(skk))
 
 
 class Prototypes:
@@ -38,11 +48,13 @@ class Prototypes:
         self.device = device
 
         self.threshold = 1 / num_classes # 期待値として定義
+        self.lam = args.lam
         self.batch_size = args.batch_size
         self.dataset_type = args.dataset_type
 
         # クラスごとの閾値のリスト
         self.class_threshold = [ self.threshold for _ in range(self.num_classes) ]
+        self.negative_class_threshold = [ self.threshold for _ in range(self.num_classes) ]
         
         self.positive_features = []
         self.positive_labels = []
@@ -53,7 +65,10 @@ class Prototypes:
         self.positive_counts = 0
         self.negative_counts = 0
         self.flag = False
-        self.start = False
+
+        self.pos_flag = [ False for _ in range(num_classes) ]
+        self.neg_flag = [ False for _ in range(num_classes) ]
+
         self.pos_start = False
         self.neg_start = False
 
@@ -134,7 +149,7 @@ class Prototypes:
                     self.positive_counts += 1
 
                 # 正解クラスの確率が期待値よりも低い場合
-                elif smax_outs[idx, label] < self.threshold:
+                elif smax_outs[idx, label] < self.negative_class_threshold[label]:
                     self.negative_features.append(f_proj[idx].unsqueeze(0))
                     self.negative_labels.append(labels[idx].unsqueeze(0))
                     self.negative_counts += 1
@@ -170,6 +185,7 @@ class Prototypes:
                 if len(positive_features_of_cls) > data_size_per_class * 0.01: # ここの0.01はハイパーパラメータになり得る
                     self.positive_prototypes[cls] = positive_features_of_cls.mean(0)
                     self.class_threshold[cls] = min(self.class_threshold[cls]+self.threshold, 1-self.threshold)
+                    if not self.pos_flag[cls]: self.pos_flag[cls] = True
                 else:
                     self.positive_prototypes[cls] = previous_positive_prototypes[cls]
                     # 1つでもポジティブプロトタイプを計算できないクラスがあったらFalse
@@ -179,19 +195,31 @@ class Prototypes:
 
                 if len(negative_features_of_cls) > 0:
                     # 既に対照学習が始まっているなら重み付け
-                    if self.flag:
-                        self.negative_prototypes[cls] = (1 - 0.1) * previous_negative_prototypes[cls] + 0.1 * negative_features_of_cls.mean(0)
+                    if self.neg_flag[cls]:
+                    # if self.flag:
+                        # ここのハイパーパラメータをλに置き換える
+                        self.negative_prototypes[cls] = (1 - self.lam) * previous_negative_prototypes[cls] + self.lam * negative_features_of_cls.mean(0)
                     # 今回が初めての場合は、単純に平均値
                     else:
                         self.negative_prototypes[cls] = negative_features_of_cls.mean(0)
+                        self.neg_flag[cls] = True
                 
                 else:
                     self.negative_prototypes[cls] = previous_negative_prototypes[cls]
                     # 1つでもネガティブプロトタイプを計算できないクラスがあったらFalse
                     self.neg_start = False
                     print(f'few negative sample in class {cls}!!')
+                
+                self.negative_class_threshold[cls] = (self.threshold + self.class_threshold[cls]) / 2
             
-            if (self.pos_start and self.neg_start): self.flag = True
+            if not self.flag:
+                if (all(self.pos_flag) and all(self.neg_flag)):
+                    self.flag = True
+                    prGreen("start contrastive learning using prototype!!")
+            # if not self.flag:
+            #     if (self.pos_start and self.neg_start):
+            #         self.flag = True
+            #         prGreen("start contrastive learning using prototype!!")
 
             if self.flag:
                 self.positive_prototypes = F.normalize(self.positive_prototypes, dim=1)
@@ -199,7 +227,8 @@ class Prototypes:
 
         print(f'[pos/total]: {self.positive_counts}/{self.data_counts}')
         print(f'[neg/total]: {self.negative_counts}/{self.data_counts}')
-        print(f'current threshold of positive or negative: {self.class_threshold}')
+        print(f'current positive threshold: {self.class_threshold}')
+        print(f'current negative threshold: {self.negative_class_threshold}')
 
     def calculate_loss(
         self,

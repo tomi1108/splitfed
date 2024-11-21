@@ -38,7 +38,6 @@ def set_seed(seed: int, device):
         torch.backends.cudnn.benchmark = False
 
 def prRed(skk): print("\033[91m {}\033[00m" .format(skk)) 
-def prGreen(skk): print("\033[92m {}\033[00m" .format(skk))
 
 # parser
 parser = argparse.ArgumentParser(description='splitfed learning')
@@ -55,7 +54,8 @@ parser.add_argument('--datasets_dir', type=str, default='~/datasets/', help='pat
 parser.add_argument('--results_dir', type=str, default='./results/', help='path to results directory')
 parser.add_argument('--data_dist_type', type=str, choices=['iid', 'non-iid'], default='iid', help='select the type of data distribution')
 parser.add_argument('--alpha', type=float, default=1.0, help='parameter of dirichlet distribution')
-parser.add_argument('--u', type=float, default=0.5, help='hyperparameter about prototype effective')
+parser.add_argument('--mu', type=float, default=1.0, help='hyperparameter about prototype effective')
+parser.add_argument('--lam', type=float, default=0.1, help='hyperparameter about latest negative sample effective')
 parser.add_argument('--lr', type=float, default=0.01, help='the leraning rate of training')
 parser.add_argument('--momentum', type=float, default=0.9, help='the momentum of training')
 parser.add_argument('--weight_decay', type=float, default=0.0001, help='the weight decay of training')
@@ -106,7 +106,7 @@ class Server:
         if self.args.app_name == 'P_SFL':
             if prototypes.flag:
                 p_loss = prototypes.calculate_loss(client_id, smashed_data, labels)
-                loss = loss + args.u * p_loss
+                loss = loss + args.mu * p_loss
 
         loss.backward()
         self.optimizer.step()
@@ -260,7 +260,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
 
     # create dataloader
     train_loaders, test_loader = create_cached_data_loaders(args, data_indices_per_client, num_classes)
-    client_models, server_model, client_optimizers, server_optimizer = create_model(args, num_clients, num_classes, device)        
+    client_models, server_model, client_optimizers, server_optimizer, client_schedulers, server_scheduler = create_model(args, num_clients, num_classes, device)        
 
     # server and client
     server = Server(args, server_model, test_loader, server_optimizer, device)
@@ -297,6 +297,11 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             server.running_loss = server.running_loss / (num_iter * num_clients)
             prRed(f'[Round {round+1}/Epoch {epoch+1}] Training Loss: {server.running_loss:.4f}')
         
+        # スケジューラの更新
+        for client_scheduler in client_schedulers.values():
+            client_scheduler.step()
+        server_scheduler.step()
+
         # test mode
         server.model.eval()
         for client_id, client in clients.items():
