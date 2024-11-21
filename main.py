@@ -322,7 +322,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         corrects = 0
         totals = 0
         train_loss = 0.0
-        for client_id, client in clients.items():
+        for client_id, client in tqdm(clients.items()):
             correct, total, loss = client.evaluate(server.model, prototypes)
             corrects += correct
             totals += total
