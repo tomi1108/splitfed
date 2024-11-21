@@ -118,7 +118,7 @@
 
 anaconda_env=SL
 model_type='resnet50' # ['mobilenet_v2, 'resnet50']
-dataset_type='cifar10' # ['cifar10', 'cifar100', 'tinyimagenet']
+dataset_type='cifar100' # ['cifar10', 'cifar100', 'tinyimagenet']
 datasets_dir='~/datasets/'
 results_dir='./results/'
 data_dist_type='non-iid' # ['iid', 'non-iid']
@@ -129,13 +129,13 @@ data_dist_type='non-iid' # ['iid', 'non-iid']
 # lambda_list=(1.0 0.9 0.5 0.1)
 
 app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(0.8)
-mu_list=(10.0)
-lambda_list=(0.9)
+alpha_list=(0.6) # [1.0 0.6 0.2]
+mu_list=(10.0) # [10.0 5.0 1.0]
+lambda_list=(1.0) # [1.0 0.9 0.5 0.1]
 
 seed=42
 num_rounds=100
-num_epochs=5 # [1 5 10 20 40]
+num_epochs=1 # [1 5 10 20 40]
 num_clients=5
 batch_size=128
 projected_size=256
@@ -143,7 +143,7 @@ lr=0.01
 momentum=0.9
 weight_decay=0.0001
 
-save_flag=True # [True, False]
+save_flag=False # [True, False]
 
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate ${anaconda_env}

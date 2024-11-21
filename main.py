@@ -301,6 +301,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         for client_scheduler in client_schedulers.values():
             client_scheduler.step()
         server_scheduler.step()
+        print(f'current server learning rate: {server_scheduler.get_last_lr()}')
 
         # test mode
         server.model.eval()
