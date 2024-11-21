@@ -123,13 +123,13 @@ datasets_dir='~/datasets/'
 results_dir='./results/'
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
-app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+# app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
 # alpha_list=(1.0 0.1 0.01)
 # mu_list=(10.0 5.0 1.0)
 # lambda_list=(1.0 0.9 0.5 0.1)
 
-# app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(0.1)
+app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+alpha_list=(0.8)
 mu_list=(10.0)
 lambda_list=(0.9)
 
@@ -155,6 +155,10 @@ for app_name in "${app_names[@]}"; do
         for mu in "${mu_list[@]}"; do
 
             for lambda in "${lambda_list[@]}"; do
+
+                # if [[ "${app_name}" == 'P_SFL' && "${alpha}" == '0.8' ]]; then
+                #     continue
+                # fi
 
                 echo "approach name: ${app_name}"
                 echo "alpha: ${alpha}"
