@@ -2,29 +2,29 @@
 
 anaconda_env=SL
 model_type='resnet50' # ['mobilenet_v2, 'resnet50']
-dataset_type='tinyimagenet' # ['cifar10', 'cifar100', 'tinyimagenet']
+dataset_type='cifar10' # ['cifar10', 'cifar100', 'tinyimagenet']
 datasets_dir='~/datasets/' # path to datasets directory
 results_dir='./results/' # path to results directory
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
 app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-# alpha_list=(1.0 0.1 0.01)
-# mu_list=(10.0 5.0 1.0)
-# lambda_list=(1.0 0.9 0.5 0.1)
+alpha_list=(1.0 0.6 0.2)
+mu_list=(10.0 5.0 1.0)
+lambda_list=(0.9 0.5 0.1)
 
-# app_names=('SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(0.2 0.6 1.0) # [1.0 0.6 0.2]
-mu_list=(10.0) # [10.0 5.0 1.0]
-lambda_list=(1.0) # [1.0 0.9 0.5 0.1]
+# app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+# alpha_list=(0.2) # [1.0 0.6 0.2]
+# mu_list=(10.0) # [10.0 5.0 1.0]
+# lambda_list=(0.1) # [1.0 0.9 0.5 0.1]
 
 seed=42
 num_rounds=50
-warmup_rounds=5
+warmup_rounds=0
 num_epochs=5 # [1 5 10 20 40]
 num_clients=5 
 batch_size=128 
-projected_size=256
-lr=0.1
+projected_size=512
+lr=0.01
 min_lr=0.00001
 momentum=0.9
 weight_decay=0.0001
@@ -42,13 +42,13 @@ for lambda in "${lambda_list[@]}"; do
 
             for app_name in "${app_names[@]}"; do
 
-                # if [[ "${app_name}" == 'P_SFL' && "${alpha}" == '0.8' ]]; then
+                # if [[ "${app_name}" == 'P_SFL' && "${alpha}" == '0.2' && "${lambda}" == '1.0' ]]; then
                 #     continue
                 # fi
 
-                # if [[ "${app_name}" == 'P_SFL' && "${alpha}" == '0.8' ]]; then
-                #     continue
-                # fi
+                if [[ "${app_name}" == 'SFL' && ( "${lambda}" == 0.5 || "${lambda}" == 0.1 || "${mu}" == 5.0 || "${mu}" == 1.0 ) ]]; then
+                    continue
+                fi
 
                 echo "approach name: ${app_name}"
                 echo "alpha: ${alpha}"
@@ -77,7 +77,7 @@ for lambda in "${lambda_list[@]}"; do
                     --save_flag ${save_flag}
                 "
 
-                # python3 main.py ${params}
+                python3 main.py ${params}
             
             done
         done

@@ -54,8 +54,7 @@ def create_model(
             optimizer = client_optimizers[client_id], 
             T_max = args.num_rounds - args.warmup_rounds,
             eta_min = args.min_lr,
-            last_epoch = -1,
-            verbose = True
+            last_epoch = -1
         ) for client_id in range(num_clients)
     }
     server_optimizer = optim.SGD(server_model.parameters(), lr, momentum, weight_decay)
@@ -63,8 +62,7 @@ def create_model(
         optimizer=server_optimizer,
         T_max = args.num_rounds - args.warmup_rounds,
         eta_min = args.min_lr,
-        last_epoch = -1,
-        verbose = True
+        last_epoch = -1
     )
     # server_scheduler = StepLR(server_optimizer, step_size=20, gamma=0.1, last_epoch=-1)
 

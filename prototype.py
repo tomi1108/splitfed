@@ -2,6 +2,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.nn.functional as F
+from torch.optim.lr_scheduler import LambdaLR, CosineAnnealingLR
 from tqdm import tqdm
 
 
@@ -83,13 +84,13 @@ class Prototypes:
         self.temperature = 0.5
 
         # P_SFLなら実行する
-        self.sub_projection_heads, self.sub_optimizers = self.build_sub_projection_head()
+        self.sub_projection_heads, self.sub_optimizers, self.sub_schedulers = self.build_sub_projection_head()
 
     
     def build_sub_projection_head(self):
 
         c, h, w = self.intermediate_info
-        sub_projection_heads, sub_optimizers = {}, {}
+        sub_projection_heads, sub_optimizers, sub_schedulers = {}, {}, {}
 
         for client_id in range(self.args.num_clients):
 
@@ -110,8 +111,15 @@ class Prototypes:
                 momentum=self.args.momentum,
                 weight_decay=self.args.weight_decay,
             )
-        
-        return sub_projection_heads, sub_optimizers
+
+            sub_schedulers[client_id] = CosineAnnealingLR(
+                optimizer = sub_optimizers[client_id],
+                T_max = self.args.num_rounds - self.args.warmup_rounds,
+                eta_min = self.args.min_lr,
+                last_epoch = -1
+            )
+
+        return sub_projection_heads, sub_optimizers, sub_schedulers
     
         
     def reset(self):
@@ -213,14 +221,14 @@ class Prototypes:
                 
                 self.negative_class_threshold[cls] = (self.threshold + self.class_threshold[cls]) / 2
             
-            if not self.flag:
-                if (all(self.pos_flag) and all(self.neg_flag)):
-                    self.flag = True
-                    prGreen("start contrastive learning using prototype!!")
             # if not self.flag:
-            #     if (self.pos_start and self.neg_start):
+            #     if (all(self.pos_flag) and all(self.neg_flag)):
             #         self.flag = True
             #         prGreen("start contrastive learning using prototype!!")
+            if not self.flag:
+                if (self.pos_start and self.neg_start):
+                    self.flag = True
+                    prGreen("start contrastive learning using prototype!!")
 
             if self.flag:
                 self.positive_prototypes = F.normalize(self.positive_prototypes, dim=1)

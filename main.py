@@ -296,7 +296,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     for round in range(args.num_rounds):
 
         print(f'=== Round[{round+1}/{args.num_rounds}] ===')
-        print(f'current server learning rate: {server_scheduler.get_last_lr()}')
+        print(f"current server learning rate: {server_optimizer.param_groups[0]['lr']}")
 
         server.model.train()
         for client_id, client in clients.items():
@@ -316,14 +316,16 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             prRed(f'[Round {round+1}/Epoch {epoch+1}] Training Loss: {server.running_loss:.4f}')
         
         # スケジューラの更新
-        if round < args.warmup_rounds:
-            for client_warmup_scheduler in client_warmup_schedulers.values():
-                client_warmup_scheduler.step()
-            server_warmup_scheduler.step()
-        else:
-            for client_scheduler in client_schedulers.values():
-                client_scheduler.step()
-            server_scheduler.step()
+        # if round < args.warmup_rounds:
+        #     for client_warmup_scheduler in client_warmup_schedulers.values():
+        #         client_warmup_scheduler.step()
+        #     server_warmup_scheduler.step()
+        # else:
+        for client_scheduler in client_schedulers.values():
+            client_scheduler.step()
+            if args.app_name == 'P_SFL' and prototypes.flag:
+                prototypes.sub_schedulers[client_id].step()
+        server_scheduler.step()
 
         # test mode
         server.model.eval()
