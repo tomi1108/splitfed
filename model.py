@@ -2,7 +2,7 @@ import argparse
 import torch
 import torch.nn as nn
 import torch.optim as optim
-from torch.optim.lr_scheduler import StepLR
+from torch.optim.lr_scheduler import StepLR, CosineAnnealingLR
 from torchvision.models import (
     mobilenet_v2, resnet18, resnet34, resnet50, resnet101, resnet152
 )
@@ -49,10 +49,22 @@ def create_model(
         client_id: optim.SGD(client_models[client_id].parameters(), lr, momentum, weight_decay) for client_id in range(num_clients)
     }
     client_schedulers = {
-        client_id: StepLR(client_optimizers[client_id], step_size=20, gamma=0.1, last_epoch=-1) for client_id in range(num_clients)
+        # client_id: StepLR(client_optimizers[client_id], step_size=20, gamma=0.1, last_epoch=-1) for client_id in range(num_clients)
+        client_id: CosineAnnealingLR(
+            optimizer = client_optimizers[client_id], 
+            T_max = args.num_rounds - args.warmup_rounds,
+            eta_min = args.min_lr,
+            last_epoch = -1
+        ) for client_id in range(num_clients)
     }
     server_optimizer = optim.SGD(server_model.parameters(), lr, momentum, weight_decay)
-    server_scheduler = StepLR(server_optimizer, step_size=20, gamma=0.1, last_epoch=-1)
+    server_scheduler = CosineAnnealingLR(
+        optimizer=server_optimizer,
+        T_max = args.num_rounds - args.warmup_rounds,
+        eta_min = args.min_lr,
+        last_epoch = -1
+    )
+    # server_scheduler = StepLR(server_optimizer, step_size=20, gamma=0.1, last_epoch=-1)
 
     
     return client_models, server_model, client_optimizers, server_optimizer, client_schedulers, server_scheduler

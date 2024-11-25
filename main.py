@@ -4,6 +4,7 @@ import random
 import torch
 import numpy as np
 import copy
+from torch.optim.lr_scheduler import LambdaLR
 from tqdm import tqdm
 from typing import Tuple, Dict, List
 from datasets import *
@@ -45,6 +46,7 @@ parser.add_argument('--app_name', type=str, default='SFL', help='the approach na
 parser.add_argument('--seed', type=int, default=42, help='seed of numpy, random and torch')
 parser.add_argument('--num_clients', type=int, default=2, help='the number of clients')
 parser.add_argument('--num_rounds', type=int, default=50, help='the number of global rounds')
+parser.add_argument('--warmup_rounds', type=int, default=5, help='the number of warmup rounds')
 parser.add_argument('--num_epochs', type=int, default=5, help='the number of global epochs')
 parser.add_argument('--projected_size', type=int, default=256, help='output size of projection head')
 parser.add_argument('--batch_size', type=int , default=128, help='the batch_size of train dataloader')
@@ -56,7 +58,8 @@ parser.add_argument('--data_dist_type', type=str, choices=['iid', 'non-iid'], de
 parser.add_argument('--alpha', type=float, default=1.0, help='parameter of dirichlet distribution')
 parser.add_argument('--mu', type=float, default=1.0, help='hyperparameter about prototype effective')
 parser.add_argument('--lam', type=float, default=0.1, help='hyperparameter about latest negative sample effective')
-parser.add_argument('--lr', type=float, default=0.01, help='the leraning rate of training')
+parser.add_argument('--lr', type=float, default=0.1, help='the leraning rate of training')
+parser.add_argument('--min_lr', type=float, default=0.00001, help='the minimum leraning rate of training')
 parser.add_argument('--momentum', type=float, default=0.9, help='the momentum of training')
 parser.add_argument('--weight_decay', type=float, default=0.0001, help='the weight decay of training')
 parser.add_argument('--save_flag', type=str, default='False', help='whether to record the results')
@@ -87,6 +90,7 @@ class Server:
 
     def train(
         self,
+        round: int,
         intermediates: Tuple[int, torch.Tensor, torch.Tensor],
         prototypes: Prototypes = None,
     ) -> Dict[int, torch.Tensor]:
@@ -104,7 +108,7 @@ class Server:
         self.running_loss += loss.item()
 
         if self.args.app_name == 'P_SFL':
-            if prototypes.flag:
+            if prototypes.flag and round+1 > args.warmup_rounds:
                 p_loss = prototypes.calculate_loss(client_id, smashed_data, labels)
                 loss = loss + args.mu * p_loss
 
@@ -112,7 +116,8 @@ class Server:
         self.optimizer.step()
 
         if self.args.app_name == 'P_SFL':
-            if prototypes.flag: prototypes.sub_optimizers[client_id].step()
+            if prototypes.flag and round+1 > args.warmup_rounds:
+                prototypes.sub_optimizers[client_id].step()
 
         gradients = {client_id: smashed_data.grad}
     
@@ -238,6 +243,12 @@ def fedavg(
     return global_weights
 
 
+def warmup_scheduler(round):
+    if round < args.warmup_rounds:
+        return (round + 1) / (args.warmup_rounds + 1)
+    return 1.0
+
+
 def main(args: argparse.ArgumentParser, device: torch.device):
 
     # save or not
@@ -269,6 +280,12 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         for client_id in range(num_clients)
     }
 
+    server_warmup_scheduler = LambdaLR(optimizer=server_optimizer, lr_lambda=warmup_scheduler)
+    client_warmup_schedulers = {
+        client_id: LambdaLR(optimizer=client_optimizers[client_id], lr_lambda=warmup_scheduler)
+        for client_id in range(num_clients)
+    }
+
     # prototype
     if args.app_name == 'P_SFL':
         prototypes = Prototypes(args, num_classes, device)
@@ -279,6 +296,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     for round in range(args.num_rounds):
 
         print(f'=== Round[{round+1}/{args.num_rounds}] ===')
+        print(f"current server learning rate: {server_optimizer.param_groups[0]['lr']}")
 
         server.model.train()
         for client_id, client in clients.items():
@@ -291,15 +309,22 @@ def main(args: argparse.ArgumentParser, device: torch.device):
 
                 for client_id, client in clients.items():
                     intermediates = clients[client_id].forward()
-                    gradients = server.train(intermediates, prototypes)
+                    gradients = server.train(round, intermediates, prototypes)
                     client.backward(gradients)
             
             server.running_loss = server.running_loss / (num_iter * num_clients)
             prRed(f'[Round {round+1}/Epoch {epoch+1}] Training Loss: {server.running_loss:.4f}')
         
         # スケジューラの更新
+        # if round < args.warmup_rounds:
+        #     for client_warmup_scheduler in client_warmup_schedulers.values():
+        #         client_warmup_scheduler.step()
+        #     server_warmup_scheduler.step()
+        # else:
         for client_scheduler in client_schedulers.values():
             client_scheduler.step()
+            if args.app_name == 'P_SFL' and prototypes.flag:
+                prototypes.sub_schedulers[client_id].step()
         server_scheduler.step()
 
         # test mode
