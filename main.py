@@ -108,7 +108,8 @@ class Server:
         self.running_loss += loss.item()
 
         if self.args.app_name == 'P_SFL':
-            if prototypes.flag and round+1 > args.warmup_rounds:
+            # if prototypes.flag and round+1 > args.warmup_rounds:
+            if prototypes.flag:
                 p_loss = prototypes.calculate_loss(client_id, smashed_data, labels)
                 loss = loss + args.mu * p_loss
 
@@ -116,7 +117,8 @@ class Server:
         self.optimizer.step()
 
         if self.args.app_name == 'P_SFL':
-            if prototypes.flag and round+1 > args.warmup_rounds:
+            # if prototypes.flag and round+1 > args.warmup_rounds:
+            if prototypes.flag:
                 prototypes.sub_optimizers[client_id].step()
 
         gradients = {client_id: smashed_data.grad}
@@ -280,11 +282,11 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         for client_id in range(num_clients)
     }
 
-    server_warmup_scheduler = LambdaLR(optimizer=server_optimizer, lr_lambda=warmup_scheduler)
-    client_warmup_schedulers = {
-        client_id: LambdaLR(optimizer=client_optimizers[client_id], lr_lambda=warmup_scheduler)
-        for client_id in range(num_clients)
-    }
+    # server_warmup_scheduler = LambdaLR(optimizer=server_optimizer, lr_lambda=warmup_scheduler)
+    # client_warmup_schedulers = {
+    #     client_id: LambdaLR(optimizer=client_optimizers[client_id], lr_lambda=warmup_scheduler)
+    #     for client_id in range(num_clients)
+    # }
 
     # prototype
     if args.app_name == 'P_SFL':

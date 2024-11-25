@@ -2,20 +2,20 @@
 
 anaconda_env=SL
 model_type='resnet50' # ['mobilenet_v2, 'resnet50']
-dataset_type='cifar10' # ['cifar10', 'cifar100', 'tinyimagenet']
+dataset_type='tinyimagenet' # ['cifar10', 'cifar100', 'tinyimagenet']
 datasets_dir='~/datasets/' # path to datasets directory
-results_dir='./results/' # path to results directory
+results_dir='./results_second/' # path to results directory
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
-app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(1.0 0.6 0.2)
-mu_list=(10.0 5.0 1.0)
-lambda_list=(0.9 0.5 0.1)
+# app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+# alpha_list=(1.0 0.6 0.2)
+# mu_list=(10.0 5.0 1.0)
+# lambda_list=(0.9 0.5 0.1)
 
-# app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-# alpha_list=(0.2) # [1.0 0.6 0.2]
-# mu_list=(10.0) # [10.0 5.0 1.0]
-# lambda_list=(0.1) # [1.0 0.9 0.5 0.1]
+app_names=('SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+alpha_list=(1.0 0.6 0.2) # [1.0 0.6 0.2]
+mu_list=(10.0) # [10.0 5.0 1.0]
+lambda_list=(0.9) # [1.0 0.9 0.5 0.1]
 
 seed=42
 num_rounds=50
@@ -60,6 +60,7 @@ for lambda in "${lambda_list[@]}"; do
                     --model_type ${model_type}
                     --dataset_type ${dataset_type}
                     --datasets_dir ${datasets_dir}
+                    --results_dir ${results_dir}
                     --data_dist_type ${data_dist_type}
                     --num_clients ${num_clients}
                     --num_rounds ${num_rounds}
