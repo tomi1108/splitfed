@@ -123,13 +123,13 @@ datasets_dir='~/datasets/'
 results_dir='./results/'
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
-app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
 # alpha_list=(1.0 0.1 0.01)
 # mu_list=(10.0 5.0 1.0)
 # lambda_list=(1.0 0.9 0.5 0.1)
 
 # app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(0.1)
+alpha_list=(0.2 1.0)
 mu_list=(10.0)
 lambda_list=(0.9)
 
