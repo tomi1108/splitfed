@@ -89,18 +89,28 @@ class Prototypes:
     
     def build_sub_projection_head(self):
 
-        c, h, w = self.intermediate_info
+        in_c, h, w = self.intermediate_info
+        out_c = int(in_c / 4)
         sub_projection_heads, sub_optimizers, sub_schedulers = {}, {}, {}
 
         for client_id in range(self.args.num_clients):
 
+            # sub_projection_heads[client_id] = nn.Sequential(
+            #     nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1),
+            #     nn.BatchNorm2d(c),
+            #     nn.ReLU(),
+            #     nn.MaxPool2d(2),
+            #     nn.Flatten(),
+            #     nn.Linear(int(c * h * w / 2**2), self.projected_size)
+            # )
+
             sub_projection_heads[client_id] = nn.Sequential(
-                nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1),
-                nn.BatchNorm2d(c),
+                nn.Conv2d(in_c, out_c, kernel_size=1),
+                nn.BatchNorm2d(out_c),
                 nn.ReLU(),
                 nn.MaxPool2d(2),
                 nn.Flatten(),
-                nn.Linear(int(c * h * w / 2**2), self.projected_size)
+                nn.Linear(int(out_c * h * w / 2**2), self.projected_size)
             )
 
             sub_projection_heads[client_id].to(self.device)

@@ -7,15 +7,15 @@ datasets_dir='~/datasets/' # path to datasets directory
 results_dir='./results_second/' # path to results directory
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
-app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(1.0 0.6 0.2)
-mu_list=(10.0 5.0 1.0)
+# app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+# alpha_list=(1.0 0.6 0.2)
+# mu_list=(10.0 5.0 1.0)
 # lambda_list=(0.9 0.5 0.1)
 
-# app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-# alpha_list=(0.2) # [1.0 0.6 0.2]
+app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+alpha_list=(0.2) # [1.0 0.6 0.2]
 mu_list=(10.0) # [10.0 5.0 1.0]
-lambda_list=(0.9 0.1) # [1.0 0.9 0.5 0.1]
+lambda_list=(0.1) # [1.0 0.9 0.5 0.1]
 
 seed=42
 num_rounds=50

@@ -152,8 +152,8 @@ class server_resnet18(nn.Module):
             nn.Linear(input_size, projected_size)
         )
         self.output_layer = nn.Sequential(
-            nn.ReLU(inplace=False),
-            nn.Dropout(p=0.2, inplace=False),
+            # nn.ReLU(inplace=False),
+            # nn.Dropout(p=0.2, inplace=False),
             nn.Linear(projected_size, num_classes, bias=True)
         )
     
@@ -231,6 +231,7 @@ class client_resnet50(nn.Module):
             model.relu,
             model.maxpool,
             model.layer1
+            # model.layer2
         )
 
     def forward(self, x):
@@ -255,7 +256,9 @@ class server_resnet50(nn.Module):
             nn.Linear(input_size, projected_size)
         )
         self.output_layer = nn.Sequential(
+            nn.BatchNorm1d(projected_size),
             nn.ReLU(inplace=False),
+            nn.Dropout(p=0.2, inplace=False),
             nn.Linear(projected_size, num_classes, bias=True)
         )
     
