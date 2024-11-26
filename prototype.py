@@ -49,7 +49,8 @@ class Prototypes:
         self.num_classes = num_classes
         self.device = device
 
-        self.threshold = 1 / num_classes # 期待値として定義
+        # self.threshold = 1 / num_classes # 期待値として定義
+        self.threshold = 1 / num_classes**0.5
         self.lam = args.lam
         self.batch_size = args.batch_size
         self.dataset_type = args.dataset_type

@@ -4,24 +4,24 @@ anaconda_env=SL
 model_type='resnet50' # ['mobilenet_v2, 'resnet50']
 dataset_type='tinyimagenet' # ['cifar10', 'cifar100', 'tinyimagenet']
 datasets_dir='~/datasets/' # path to datasets directory
-results_dir='./results_second/' # path to results directory
+results_dir='./results_ieee/' # path to results directory
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
-# app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-# alpha_list=(1.0 0.6 0.2)
-# mu_list=(10.0 5.0 1.0)
-# lambda_list=(0.9 0.5 0.1)
+app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+alpha_list=(1.0 0.6 0.2)
+mu_list=(10.0)
+lambda_list=(0.9 0.1)
 
-app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
-alpha_list=(0.2) # [1.0 0.6 0.2]
-mu_list=(10.0) # [10.0 5.0 1.0]
-lambda_list=(0.1) # [1.0 0.9 0.5 0.1]
+# app_names=('P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+# alpha_list=(0.2) # [1.0 0.6 0.2]
+# mu_list=(10.0) # [10.0 5.0 1.0]
+# lambda_list=(0.9) # [1.0 0.9 0.5 0.1]
 
 seed=42
 num_rounds=50
 warmup_rounds=0
 num_epochs=5 # [1 5 10 20 40]
-num_clients=5 
+num_clients=5
 batch_size=128 
 projected_size=512
 lr=0.01

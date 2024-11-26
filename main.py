@@ -90,7 +90,7 @@ class Server:
 
     def train(
         self,
-        round: int,
+        epoch: int,
         intermediates: Tuple[int, torch.Tensor, torch.Tensor],
         prototypes: Prototypes = None,
     ) -> Dict[int, torch.Tensor]:
@@ -311,7 +311,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
 
                 for client_id, client in clients.items():
                     intermediates = clients[client_id].forward()
-                    gradients = server.train(round, intermediates, prototypes)
+                    gradients = server.train(epoch, intermediates, prototypes)
                     client.backward(gradients)
             
             server.running_loss = server.running_loss / (num_iter * num_clients)
@@ -369,10 +369,9 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             prototypes.reset()
             # fedavg of sub projection head
             trained_sub_projection_heads = {}
-            sub_fedavg_ratios = { client_id: 1 / num_clients for client_id in range(num_clients) }
             for client_id in range(num_clients):
                 trained_sub_projection_heads[client_id] = prototypes.sub_projection_heads[client_id].state_dict()
-            global_sub_projection_head = fedavg(trained_sub_projection_heads, sub_fedavg_ratios)
+            global_sub_projection_head = fedavg(trained_sub_projection_heads, fedavg_ratios)
             for client_id in range(num_clients):
                 prototypes.sub_projection_heads[client_id].load_state_dict(global_sub_projection_head)
 
