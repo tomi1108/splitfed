@@ -226,6 +226,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         
         trained_client_models = {}
         for client_id in range(num_clients):
+            print(f'train client {client_id}')
             trained_client_models[client_id] = train_client(args, device, client_models[client_id], client_optimizers[client_id], train_loaders[client_id])
 
         for client_model in client_models.values():
@@ -240,7 +241,33 @@ def main(args: argparse.ArgumentParser, device: torch.device):
 
         correct = 0
         total = 0
-        testing_loss = 0.0
+        train_loss = 0.0
+        loader_size = 0
+        with torch.no_grad():
+            for train_loader in train_loaders.values():
+                for images, labels in train_loader:
+
+                    images = images.to(device)
+                    labels = labels.to(device)
+
+                    _, _, outs = client_models[0](images)
+                    loss = criterion(outs, labels)
+                    train_loss += loss.item()
+
+                    _, predicted = torch.max(outs, 1)
+                    correct += (predicted == labels).sum().item()
+                    total += labels.size(0)
+
+                loader_size += len(train_loader)
+
+        train_accuracy = 100 * correct / total
+        train_loss /= loader_size
+        print(f'Train Accuracy: {train_accuracy:.2f}%, Train Loss: {train_loss:.4f}')
+
+
+        correct = 0
+        total = 0
+        test_loss = 0.0
         with torch.no_grad():
             for images, labels in test_loader:
 
@@ -249,15 +276,19 @@ def main(args: argparse.ArgumentParser, device: torch.device):
 
                 _, _, outs = client_models[0](images)
                 loss = criterion(outs, labels)
-                testing_loss += loss.item()
+                test_loss += loss.item()
 
                 _, predicted = torch.max(outs, 1)
                 correct += (predicted == labels).sum().item()
                 total += labels.size(0)
         
-        accuracy = 100 * correct / total
-        testing_loss /= len(test_loader)
-        print(f'Test Accuracy: {accuracy:.2f}%, Test Loss: {testing_loss:.4f}')
+        test_accuracy = 100 * correct / total
+        test_loss /= len(test_loader)
+        print(f'Test Accuracy: {test_accuracy:.2f}%, Test Loss: {test_loss:.4f}')
+
+        if args.save_flag:
+            header = [round+1, train_loss, test_loss, train_accuracy, test_accuracy]
+            save_data(resutls_path, header)
 
         end_time = time.time()
         print(f'this round takes {end_time-start_time} s.')
