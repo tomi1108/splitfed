@@ -36,6 +36,25 @@ def prGreen(skk):
     print("\033[92m {}\033[00m" .format(skk))
 
 
+class Sub_Classifier(nn.Module):
+
+    def __init__(self, input_size, projected_size, num_classes):
+        super(Sub_Classifier, self).__init__()
+
+        self.flatten = nn.Flatten()
+        self.linear1 = nn.Linear(input_size, projected_size)
+        self.bn = nn.BatchNorm1d(projected_size)
+        self.relu = nn.ReLU()
+        self.linear2 = nn.Linear(projected_size, num_classes)
+    
+    def forward(self, x):
+
+        projected = self.linear1(self.flatten(x))
+        output = self.linear2(self.relu(self.bn(projected)))
+
+        return projected, output
+
+
 class Prototypes:
 
     def __init__(
@@ -50,7 +69,7 @@ class Prototypes:
         self.device = device
 
         # self.threshold = 1 / num_classes # 期待値として定義
-        self.threshold = 1 / num_classes**0.5
+        self.threshold = min(0.1, 1 / num_classes**0.5)
         self.lam = args.lam
         self.batch_size = args.batch_size
         self.dataset_type = args.dataset_type
@@ -81,12 +100,38 @@ class Prototypes:
         self.negative_prototypes = torch.zeros(self.num_classes, self.projected_size).to(self.device)
     
         self.criterion = torch.nn.CrossEntropyLoss()
+        self.kl_criterion = torch.nn.KLDivLoss(reduction='batchmean')
         self.cosine = torch.nn.CosineSimilarity(dim=1)
         self.temperature = 0.5
 
-        # P_SFLなら実行する
-        self.sub_projection_heads, self.sub_optimizers, self.sub_schedulers = self.build_sub_projection_head()
+        app_name = self.args.app_name
+        if app_name == 'P_SFL':
+            self.sub_projection_heads, self.sub_optimizers, self.sub_schedulers = self.build_sub_projection_head()
+        elif app_name == 'PKL_SFL':
+            self.sub_classifier, self.sub_optimizer, self.sub_scheduler = self.build_sub_classifier()
 
+    def build_sub_classifier(self):
+
+        in_c, h, w = self.intermediate_info
+        input_size = in_c * h * w
+        
+        sub_classifier = Sub_Classifier(input_size, self.projected_size, self.num_classes).to(self.device)
+
+        sub_optimizer = torch.optim.SGD(
+            params = sub_classifier.parameters(),
+            lr = self.args.lr,
+            momentum = self.args.momentum,
+            weight_decay = self.args.weight_decay
+        )
+
+        sub_scheduler = CosineAnnealingLR(
+            optimizer = sub_optimizer,
+            T_max = self.args.num_rounds - self.args.warmup_rounds,
+            eta_min = self.args.min_lr,
+            last_epoch = -1
+        )
+
+        return sub_classifier, sub_optimizer, sub_scheduler
     
     def build_sub_projection_head(self):
 
@@ -95,15 +140,6 @@ class Prototypes:
         sub_projection_heads, sub_optimizers, sub_schedulers = {}, {}, {}
 
         for client_id in range(self.args.num_clients):
-
-            # sub_projection_heads[client_id] = nn.Sequential(
-            #     nn.Conv2d(c, c, kernel_size=3, stride=1, padding=1),
-            #     nn.BatchNorm2d(c),
-            #     nn.ReLU(),
-            #     nn.MaxPool2d(2),
-            #     nn.Flatten(),
-            #     nn.Linear(int(c * h * w / 2**2), self.projected_size)
-            # )
 
             sub_projection_heads[client_id] = nn.Sequential(
                 nn.Conv2d(in_c, out_c, kernel_size=1),
@@ -132,7 +168,6 @@ class Prototypes:
 
         return sub_projection_heads, sub_optimizers, sub_schedulers
     
-        
     def reset(self):
 
         self.positive_features = []
@@ -173,8 +208,7 @@ class Prototypes:
                     self.negative_features.append(f_proj[idx].unsqueeze(0))
                     self.negative_labels.append(labels[idx].unsqueeze(0))
                     self.negative_counts += 1
-
-                    
+              
     def calculate_prototypes(self):
 
         # initialize prototype
@@ -216,10 +250,7 @@ class Prototypes:
                 if len(negative_features_of_cls) > 0:
                     # 既に対照学習が始まっているなら重み付け
                     if self.neg_flag[cls]:
-                    # if self.flag:
-                        # ここのハイパーパラメータをλに置き換える
                         self.negative_prototypes[cls] = (1 - self.lam) * previous_negative_prototypes[cls] + self.lam * negative_features_of_cls.mean(0)
-                    # 今回が初めての場合は、単純に平均値
                     else:
                         self.negative_prototypes[cls] = negative_features_of_cls.mean(0)
                         self.neg_flag[cls] = True
@@ -231,11 +262,7 @@ class Prototypes:
                     print(f'few negative sample in class {cls}!!')
                 
                 self.negative_class_threshold[cls] = (self.threshold + self.class_threshold[cls]) / 2
-            
-            # if not self.flag:
-            #     if (all(self.pos_flag) and all(self.neg_flag)):
-            #         self.flag = True
-            #         prGreen("start contrastive learning using prototype!!")
+
             if not self.flag:
                 if (self.pos_start and self.neg_start):
                     self.flag = True
@@ -250,7 +277,36 @@ class Prototypes:
         print(f'current positive threshold: {self.class_threshold}')
         print(f'current negative threshold: {self.negative_class_threshold}')
 
-    def calculate_loss(
+    def calculate_pkl_loss(
+        self,
+        smashed_data: torch.Tensor,
+        labels: torch.Tensor,
+        soft_targets: torch.Tensor
+    ):
+        
+        self.sub_optimizer.zero_grad()
+        projected, outputs = self.sub_classifier(smashed_data)
+
+        projected = F.normalize(projected, dim=1)
+        positive_sample = self.positive_prototypes[labels]
+        negative_sample = self.negative_prototypes[labels]
+
+        pos = self.cosine(projected, positive_sample)
+        neg = self.cosine(projected, negative_sample)
+
+        logits = torch.cat((pos.reshape(-1, 1), neg.reshape(-1, 1)), dim=1)
+        logits /= 0.5
+        logits_labels = torch.zeros(self.batch_size).to(self.device).long()
+
+        # prototype contrastive learning
+        proto_loss = self.criterion(logits, logits_labels)
+        # knowledge distillation
+        kl_loss = self.kl_criterion(F.log_softmax(outputs / 2.0, dim=1),
+                                    F.softmax(soft_targets / 2.0, dim=1)) * 2.0 * 2.0
+
+        return proto_loss, kl_loss
+
+    def calculate_p_loss(
         self,
         client_id: int,
         smashed_data: torch.Tensor,
@@ -272,6 +328,7 @@ class Prototypes:
         logits /= 0.5
         logits_labels = torch.zeros(self.batch_size).to(self.device).long()
 
-        loss = self.criterion(logits, logits_labels)
+        # prototypical contrastive learning
+        p_loss = self.criterion(logits, logits_labels)
 
-        return loss
+        return p_loss

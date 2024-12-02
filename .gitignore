@@ -1,5 +1,7 @@
 /__pycache__/
 /results/
+/results_ieee/
+/results_linear/
 /results_second/
 /results_ieee/
 /ipynb/

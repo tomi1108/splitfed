@@ -29,7 +29,7 @@ def results_setting(
     elif args.data_dist_type == 'non-iid':
         dist_type = 'A' + str(args.alpha)
 
-    if approach_name == 'P_SFL':
+    if approach_name == 'P_SFL' or approach_name == 'PKL_SFL':
         dist_type += '_U' + str(args.mu) + '_L' + str(args.lam)
 
 

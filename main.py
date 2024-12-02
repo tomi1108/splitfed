@@ -65,6 +65,12 @@ parser.add_argument('--weight_decay', type=float, default=0.0001, help='the weig
 parser.add_argument('--save_flag', type=str, default='False', help='whether to record the results')
 args = parser.parse_args()
 args.save_flag = str_to_bool(args.save_flag)
+if args.dataset_type == 'cifar10':
+    args.projected_size = 128
+elif args.dataset_type == 'cifar100':
+    args.projected_size = 256
+elif args.dataset_type == 'tinyimagenet':
+    args.projected_size = 512
 
 set_seed(args.seed, device)
 
@@ -108,18 +114,25 @@ class Server:
         self.running_loss += loss.item()
 
         if self.args.app_name == 'P_SFL':
-            # if prototypes.flag and round+1 > args.warmup_rounds:
             if prototypes.flag:
-                p_loss = prototypes.calculate_loss(client_id, smashed_data, labels)
+                p_loss = prototypes.calculate_p_loss(client_id, smashed_data, labels)
                 loss = loss + args.mu * p_loss
+        
+        elif self.args.app_name == 'PKL_SFL':
+            if prototypes.flag:
+                p_loss, kl_loss = prototypes.calculate_pkl_loss(smashed_data, labels, outs)
+                loss = loss + args.mu * p_loss + kl_loss
 
         loss.backward()
         self.optimizer.step()
 
         if self.args.app_name == 'P_SFL':
-            # if prototypes.flag and round+1 > args.warmup_rounds:
             if prototypes.flag:
                 prototypes.sub_optimizers[client_id].step()
+
+        elif self.args.app_name == 'PKL_SFL':
+            if prototypes.flag:
+                prototypes.sub_optimizer.step()
 
         gradients = {client_id: smashed_data.grad}
     
@@ -223,7 +236,7 @@ class Client:
                 correct += (predicted == labels).sum().item()
                 total += labels.size(0)
 
-                if args.app_name == 'P_SFL':
+                if args.app_name == 'P_SFL' or args.app_name == 'PKL_SFL':
                     prototypes.save_projected(f_proj, outs, labels)
                     
             train_loss /= len(self.train_loader)
@@ -289,7 +302,7 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     # }
 
     # prototype
-    if args.app_name == 'P_SFL':
+    if args.app_name == 'P_SFL' or args.app_name == 'PKL_SFL':
         prototypes = Prototypes(args, num_classes, device)
     else:
         prototypes = None
@@ -327,6 +340,8 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             client_scheduler.step()
             if args.app_name == 'P_SFL' and prototypes.flag:
                 prototypes.sub_schedulers[client_id].step()
+            elif args.app_name == 'PKL_SFL' and prototypes.flag:
+                prototypes.sub_scheduler.step()
         server_scheduler.step()
 
         # test mode
@@ -364,16 +379,18 @@ def main(args: argparse.ArgumentParser, device: torch.device):
             save_data(resutls_path, header)
         
         # calculate prototypes
-        if args.app_name == 'P_SFL':
+        if args.app_name == 'P_SFL' or args.app_name == 'PKL_SFL':
             prototypes.calculate_prototypes()
             prototypes.reset()
-            # fedavg of sub projection head
-            trained_sub_projection_heads = {}
-            for client_id in range(num_clients):
-                trained_sub_projection_heads[client_id] = prototypes.sub_projection_heads[client_id].state_dict()
-            global_sub_projection_head = fedavg(trained_sub_projection_heads, fedavg_ratios)
-            for client_id in range(num_clients):
-                prototypes.sub_projection_heads[client_id].load_state_dict(global_sub_projection_head)
+
+            if args.app_name == 'P_SFL':
+
+                trained_sub_projection_heads = {}
+                for client_id in range(num_clients):
+                    trained_sub_projection_heads[client_id] = prototypes.sub_projection_heads[client_id].state_dict()
+                global_sub_projection_head = fedavg(trained_sub_projection_heads, fedavg_ratios)
+                for client_id in range(num_clients):
+                    prototypes.sub_projection_heads[client_id].load_state_dict(global_sub_projection_head)
 
 
 if __name__ == '__main__':
