@@ -1,4 +1,3 @@
-import ray
 import argparse
 import time
 import random
@@ -145,13 +144,12 @@ def create_model(
 
     return client_models, client_optimizers, client_schedulers
 
-@ray.remote(num_gpus=0.2)
 def train_client(
     args: argparse.ArgumentParser,
     device: torch.device,
     model: nn.Module,
     optimizer: optim.Optimizer,
-    train_loader: DataLoader
+    train_loader: DataLoader,
 ):
     
     criterion = nn.CrossEntropyLoss()
@@ -159,7 +157,7 @@ def train_client(
 
     for epoch in range(args.num_epochs):
 
-        for images, labels in train_loader:
+        for images, labels in tqdm(train_loader):
 
             optimizer.zero_grad()
             images, labels = images.to(device), labels.to(device)
@@ -167,7 +165,7 @@ def train_client(
             loss = criterion(o_outs, labels)
             loss.backward()
             optimizer.step()
-
+    
     return model.state_dict()
 
 
@@ -216,37 +214,56 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     
     # create dataloader
     train_loaders, test_loader = create_cached_data_loaders(args, data_indices_per_client, num_classes)
-    client_models, client_optimizers, client_schedulers = create_model(args, num_clients, num_classes, device)        
+    client_models, client_optimizers, client_schedulers = create_model(args, num_clients, num_classes, device)
+    criterion = nn.CrossEntropyLoss()
 
     for round in range(args.num_rounds):
 
+        start_time = time.time()
         print(f'=== Round[{round+1}/{args.num_rounds}] ===')
         for client_model in client_models.values():
             client_model.train()
         
-        start_time = time.time()
-        train_results = [
-            train_client.remote(args, device, client_models[client_id], client_optimizers[client_id], train_loaders[client_id])
-            for client_id in range(num_clients)
-        ]
-        results = ray.get(train_results)
-        end_time = time.time()
+        trained_client_models = {}
+        for client_id in range(num_clients):
+            trained_client_models[client_id] = train_client(args, device, client_models[client_id], client_optimizers[client_id], train_loaders[client_id])
 
-        trained_client_models = {
-            client_id: results[client_id] for client_id in range(num_clients)
-        }
+        for client_model in client_models.values():
+            client_model.eval()
+        
         global_client_model = fedavg(trained_client_models, fedavg_ratios)
         for client_model in client_models.values():
             client_model.load_state_dict(global_client_model)
 
         for client_scheduler in client_schedulers.values():
             client_scheduler.step()
+
+        correct = 0
+        total = 0
+        testing_loss = 0.0
+        with torch.no_grad():
+            for images, labels in test_loader:
+
+                images = images.to(device)
+                labels = labels.to(device)
+
+                _, _, outs = client_models[0](images)
+                loss = criterion(outs, labels)
+                testing_loss += loss.item()
+
+                _, predicted = torch.max(outs, 1)
+                correct += (predicted == labels).sum().item()
+                total += labels.size(0)
+        
+        accuracy = 100 * correct / total
+        testing_loss /= len(test_loader)
+        print(f'Test Accuracy: {accuracy:.2f}%, Test Loss: {testing_loss:.4f}')
+
+        end_time = time.time()
         print(f'this round takes {end_time-start_time} s.')
 
 if __name__ == '__main__':
 
     set_seed(args.seed, device)
-    ray.init()
     print(args)
     main(args, device)
-    ray.shutdown()

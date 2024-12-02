@@ -7,8 +7,10 @@ results_dir='./results_linear/' # path to results directory
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
 app_names=('FL') # ['FL']
-dataset_type_list=('cifar10' 'cifar100' 'tinyimagenet')
-alpha_list=(1.0 0.6 0.2)
+# dataset_type_list=('cifar10' 'cifar100' 'tinyimagenet')
+# alpha_list=(1.0 0.6 0.2)
+dataset_type_list=('cifar10')
+alpha_list=(1.0)
 
 seed=42
 num_rounds=50
