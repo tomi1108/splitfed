@@ -33,7 +33,7 @@ def results_setting(
         dist_type += '_U' + str(args.mu) + '_L' + str(args.lam)
 
 
-    filename = '_'.join([rounds, epochs, batch, dist_type]) + '.csv'
+    filename = '_'.join([rounds, epochs, batch, f'C{str(args.num_clients)}', dist_type]) + '.csv'
     results_dir = os.path.join(results_dir, filename)
     header = ['round', 'train_loss', 'test_loss', 'train_accuracy', 'test_accuracy']
 
