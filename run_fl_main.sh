@@ -22,7 +22,7 @@ min_lr=0.00001
 momentum=0.9
 weight_decay=0.0001
 
-save_flag=False # [True, False]
+save_flag=True # [True, False]
 
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate ${anaconda_env}

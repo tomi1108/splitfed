@@ -281,28 +281,46 @@ class Prototypes:
         self,
         smashed_data: torch.Tensor,
         labels: torch.Tensor,
-        soft_targets: torch.Tensor
+        soft_targets: torch.Tensor,
+        p_soft_targets: torch.Tensor
     ):
         
         self.sub_optimizer.zero_grad()
         projected, outputs = self.sub_classifier(smashed_data)
 
         projected = F.normalize(projected, dim=1)
+        soft_projected = F.normalize(p_soft_targets, dim=1)
+
         positive_sample = self.positive_prototypes[labels]
         negative_sample = self.negative_prototypes[labels]
 
         pos = self.cosine(projected, positive_sample)
         neg = self.cosine(projected, negative_sample)
 
+        soft_pos = self.cosine(soft_projected, positive_sample)
+        soft_neg = self.cosine(soft_projected, negative_sample)
+
         logits = torch.cat((pos.reshape(-1, 1), neg.reshape(-1, 1)), dim=1)
         logits /= 0.5
+
+        soft_logits = torch.cat((soft_pos.reshape(-1, 1), soft_neg.reshape(-1, 1)), dim=1)
+        soft_logits /= 0.5
+
         logits_labels = torch.zeros(self.batch_size).to(self.device).long()
 
         # prototype contrastive learning
-        proto_loss = self.criterion(logits, logits_labels)
+        # proto_loss = self.criterion(logits, logits_labels)
+        proto_loss = self.criterion(logits, logits_labels) + self.criterion(soft_logits, logits_labels)
+
         # knowledge distillation
+        # correct_class_indices = labels.view(-1, 1)
+        # correct_class_probs = torch.gather(soft_targets, dim=1, index=correct_class_indices).squeeze()
+        # class_thresholds_tensor = torch.tensor([self.class_threshold[label] for label in labels], device=self.device)
+        # distillation_mask = (correct_class_probs > class_thresholds_tensor[correct_class_indices]).float()
+        
         kl_loss = self.kl_criterion(F.log_softmax(outputs / 2.0, dim=1),
                                     F.softmax(soft_targets / 2.0, dim=1)) * 2.0 * 2.0
+        # kl_loss = (kl_loss * distillation_mask).mean()
 
         return proto_loss, kl_loss
 

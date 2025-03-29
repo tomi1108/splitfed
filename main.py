@@ -12,6 +12,7 @@ from datasetting import *
 from model import *
 from save_results import *
 from prototype import *
+from moon import *
 
 # cuda or cpu
 device = torch.device('cuda' if torch.cuda.is_available() else 'cpu')
@@ -109,7 +110,7 @@ class Server:
         smashed_data.retain_grad()
 
         self.optimizer.zero_grad()
-        _, _, outs = self.model(smashed_data)
+        _, p_outs, outs = self.model(smashed_data)
         loss = self.criterion(outs, labels)
         self.running_loss += loss.item()
 
@@ -120,7 +121,8 @@ class Server:
         
         elif self.args.app_name == 'PKL_SFL':
             if prototypes.flag:
-                p_loss, kl_loss = prototypes.calculate_pkl_loss(smashed_data, labels, outs)
+                p_loss, kl_loss = prototypes.calculate_pkl_loss(smashed_data, labels, outs, p_outs)
+                # loss = loss + args.mu * p_loss
                 loss = loss + args.mu * p_loss + kl_loss
 
         loss.backward()
@@ -172,6 +174,7 @@ class Client:
     def __init__(
             self,
             client_id: int,
+            args: argparse.ArgumentParser,
             model: nn.Module,
             train_loader: DataLoader,
             optimizer: torch.optim.Optimizer,
@@ -179,6 +182,7 @@ class Client:
         ):
 
         self.client_id = client_id
+        self.args = args
         self.device = device
         self.model = model
         self.train_loader = train_loader
@@ -208,7 +212,7 @@ class Client:
         grad: Dict[int, torch.Tensor]
     ):
 
-        self.optimizer.zero_grad()
+        # self.optimizer.zero_grad()
         self.smashed_data.grad = grad[self.client_id].clone().detach()
         self.smashed_data.backward(gradient=self.smashed_data.grad)
         self.optimizer.step()
@@ -291,15 +295,12 @@ def main(args: argparse.ArgumentParser, device: torch.device):
     # server and client
     server = Server(args, server_model, test_loader, server_optimizer, device)
     clients = {
-        client_id: Client(client_id, client_models[client_id], train_loaders[client_id], client_optimizers[client_id], device)
+        client_id: Client(client_id, args, client_models[client_id], train_loaders[client_id], client_optimizers[client_id], device)
         for client_id in range(num_clients)
     }
 
-    # server_warmup_scheduler = LambdaLR(optimizer=server_optimizer, lr_lambda=warmup_scheduler)
-    # client_warmup_schedulers = {
-    #     client_id: LambdaLR(optimizer=client_optimizers[client_id], lr_lambda=warmup_scheduler)
-    #     for client_id in range(num_clients)
-    # }
+    if args.app_name == 'MOON_SFL':
+        moon_trainer = moon_trainner(args, device)
 
     # prototype
     if args.app_name == 'P_SFL' or args.app_name == 'PKL_SFL':
@@ -325,17 +326,15 @@ def main(args: argparse.ArgumentParser, device: torch.device):
                 for client_id, client in clients.items():
                     intermediates = clients[client_id].forward()
                     gradients = server.train(epoch, intermediates, prototypes)
+                    if args.app_name == 'MOON_SFL' and round > 0:
+                        moon_loss = moon_trainer.forward(intermediates)
+                        moon_loss.backward(retain_graph=True)
+                        moon_trainer.train_optimisers[client_id].step()
                     client.backward(gradients)
             
             server.running_loss = server.running_loss / (num_iter * num_clients)
             prRed(f'[Round {round+1}/Epoch {epoch+1}] Training Loss: {server.running_loss:.4f}')
         
-        # スケジューラの更新
-        # if round < args.warmup_rounds:
-        #     for client_warmup_scheduler in client_warmup_schedulers.values():
-        #         client_warmup_scheduler.step()
-        #     server_warmup_scheduler.step()
-        # else:
         for client_scheduler in client_schedulers.values():
             client_scheduler.step()
             if args.app_name == 'P_SFL' and prototypes.flag:
@@ -356,6 +355,8 @@ def main(args: argparse.ArgumentParser, device: torch.device):
         global_client_model = fedavg(trained_client_models, fedavg_ratios)
         for client_id, client in clients.items():
             client.model.load_state_dict(global_client_model)
+        if args.app_name == 'MOON_SFL':
+            moon_trainer.update(fedavg_ratios)
         
         # test evaluate
         test_accuracy, test_loss = server.evaluate(clients[0].model)
