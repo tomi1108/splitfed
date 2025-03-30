@@ -1,4 +1,9 @@
 ## 環境設定
+
+### git clone
+
+このリポジトリのファイルを`git clone`してローカルにおとしてください。
+
 ### Conda 環境の作成
 ```
 conda create -n test-env python=3.9.19 -y
