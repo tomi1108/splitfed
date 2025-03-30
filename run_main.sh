@@ -21,7 +21,7 @@ num_rounds=50
 warmup_rounds=0
 # num_epochs=5 # [1 5 10 20 40]
 num_epochs_list=(5)
-num_clients=20
+num_clients=5
 batch_size=128 
 projected_size=0 # CIFAR-10: 128, CIFAR-100: 256, Tiny-ImageNet: 512
 lr=0.01
@@ -29,7 +29,7 @@ min_lr=0.00001
 momentum=0.9
 weight_decay=0.0001
 
-save_flag=True # [True, False]
+save_flag=False # [True, False]
 
 source ~/anaconda3/etc/profile.d/conda.sh
 conda activate ${anaconda_env}
