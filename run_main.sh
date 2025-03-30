@@ -6,12 +6,8 @@ datasets_dir='~/datasets/' # path to datasets directory
 results_dir='./results_linear/' # path to results directory
 data_dist_type='non-iid' # ['iid', 'non-iid']
 
-# app_names=('SFL' 'P_SFL') # ['SFL', 'P_SFL', 'PM_SFL']
+app_name_list=('SFL' 'PKL_SFL') # ['SFL', 'P_SFL', 'PKL_SFL']
 dataset_type_list=('cifar10' 'cifar100' 'tinyimagenet')
-# alpha_list=(1.0 0.6 0.2)
-# mu_list=(10.0 5.0 1.0)
-# lambda_list=(0.9 0.5 0.1)
-app_names=('SFL' 'PKL_SFL') # ['SFL', 'P_SFL', 'PKL_SFL']
 alpha_list=(1.0) # [1.0 0.6 0.2]
 mu_list=(1.0) # [10.0 5.0 1.0]
 lambda_list=(0.3) # [1.0 0.9 0.5 0.1]
@@ -19,7 +15,6 @@ lambda_list=(0.3) # [1.0 0.9 0.5 0.1]
 seed=42
 num_rounds=50
 warmup_rounds=0
-# num_epochs=5 # [1 5 10 20 40]
 num_epochs_list=(5)
 num_clients=5
 batch_size=128 
@@ -43,32 +38,7 @@ for num_epochs in "${num_epochs_list[@]}"; do
 
                 for lambda in "${lambda_list[@]}"; do
 
-                    for app_name in "${app_names[@]}"; do
-
-                        # if [[ "${app_name}" == 'P_SFL' && "${alpha}" == '0.2' && "${lambda}" == '1.0' ]]; then
-                        #     continue
-                        # fi
-
-                        # if [[ "${app_name}" == 'PKL_SFL' && "${lambda}" == 0.5 && "${alpha}" == 0.2 && "${mu}" == 10.0 ]]; then
-                        #     continue
-                        # fi
-
-                        # if [[ "${app_name}" == 'SFL' && ( "${lambda}" == 0.5 || "${lambda}" == 0.1 || "${mu}" == 5.0 || "${mu}" == 1.0 ) ]]; then
-                        #     continue
-                        # fi
-
-                        if [ "${dataset_type}" == 'cifar10' ]; then
-                            mu=10.0
-                            lambda=0.1
-                        fi
-                        if [ "${dataset_type}" == 'cifar100' ]; then
-                            mu=1.0
-                            lambda=0.3
-                        fi
-                        if [ "${dataset_type}" == 'tinyimagenet' ]; then
-                            mu=1.0
-                            lambda=0.3
-                        fi
+                    for app_name in "${app_name_list[@]}"; do
 
                         echo "dataset: ${dataset_type}, num_epochs: ${num_epochs}, alpha: ${alpha}, mu: ${mu}, lambda: ${lambda}"
 
